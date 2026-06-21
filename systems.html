@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Game systems — Your Name</title>
+<title>Game systems — Fireguy1202</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
@@ -12,12 +12,12 @@
 
 <header class="site-header">
   <nav class="wrap site-nav">
-    <span class="brand">your_name<span class="dot">.lua</span></span>
+    <span class="brand">Fireguy<span class="dot">1202</span></span>
     <ul>
-      <li><a href="index.html">home</a></li>
-      <li><a href="games.html">games</a></li>
-      <li><a href="systems.html" class="active">systems</a></li>
-      <li><a href="reviews.html">reviews</a></li>
+      <li><a href="index.html">Home</a></li>
+      <li><a href="games.html">Games</a></li>
+      <li><a href="systems.html" class="active">Systems</a></li>
+      <li><a href="reviews.html">Reviews</a></li>
     </ul>
   </nav>
 </header>
@@ -34,22 +34,124 @@
     <!-- EDIT: replace with a real system you've built. Swap the code for an actual (trimmed) snippet of yours. -->
     <article class="entry">
       <p class="entry-tab">// entry 01</p>
-      <h3>[System name, e.g. Inventory system]</h3>
-      <p class="desc">[Placeholder — explain how it works in plain terms: what triggers it, what data it manages, how it talks to the client/server, and any tricky problem you solved.]</p>
+      <h3>[Notification System]</h3>
+      <p class="desc">[]</p>
       <pre><span class="c">-- example placeholder snippet, swap for your own</span>
-local Inventory = {}
-Inventory.__index = Inventory
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 
-function Inventory.new(player)
-    local self = setmetatable({}, Inventory)
-    self.player = player
-    self.items = {}
-    return self
+local Remotes = ReplicatedStorage:WaitForChild("RemoteEvents")
+local AnnoucmentRemote = Remotes:WaitForChild("Annoucment")
+local Templates = ReplicatedStorage:WaitForChild("templates")
+local AnnoucmentTemplate = Templates:WaitForChild("AnnoucmentTemplate")
+
+local Container = script.Parent
+
+local SlotHeight = AnnoucmentTemplate.Size.Y.Offset + 50
+local DisplayTime = 4
+local OpenTweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+local SlideTweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+
+local Active = {}
+
+local Eps = 0.001
+
+local function tweenGradientOpen(gradient, tweenInfo)
+	tweenInfo = tweenInfo or OpenTweenInfo
+
+	local startLeft, startRight = 0.499, 0.501
+	local progress = Instance.new("NumberValue")
+	progress.Value = 0
+	
+	TweenService:Create(gradient.Parent:FindFirstChild("TextLabel"), SlideTweenInfo, {
+		TextTransparency = 0,
+		TextStrokeTransparency = 0
+	}):Play()
+	
+
+	local function update()
+		local alpha = progress.Value
+		local leftPos = math.clamp(startLeft - (alpha * startLeft), Eps, 0.5 - Eps)
+		local rightPos = math.clamp(startRight + (alpha * (1 - startRight)), 0.5 + Eps, 1 - Eps)
+
+		gradient.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(leftPos, 1),
+			NumberSequenceKeypoint.new(0.5, 0),
+			NumberSequenceKeypoint.new(rightPos, 1),
+			NumberSequenceKeypoint.new(1, 1),
+		})
+	end
+
+	update()
+	progress.Changed:Connect(update)
+
+	local tween = TweenService:Create(progress, tweenInfo, { Value = 1 })
+	tween.Completed:Connect(function()
+		progress:Destroy()
+	end)
+	tween:Play()
+
+	return tween
 end
 
-function Inventory:addItem(itemId, amount)
-    self.items[itemId] = (self.items[itemId] or 0) + amount
-end</pre>
+local function reposition(animate)
+	for index, frame in ipairs(Active) do
+		local targetY = (index - 1) * SlotHeight
+		local targetPos = UDim2.new(frame.Position.X.Scale, frame.Position.X.Offset, 0, targetY)
+
+		if animate then
+			TweenService:Create(frame, SlideTweenInfo, { Position = targetPos }):Play()
+		else
+			frame.Position = targetPos
+		end
+	end
+end
+
+local function dismiss(frame)
+	local index = table.find(Active, frame)
+	if not index then
+		return
+	end
+	table.remove(Active, index)
+	reposition(true)
+	
+	TweenService:Create(frame:FindFirstChild("TextLabel"), SlideTweenInfo, {
+		TextTransparency = 1,
+		TextStrokeTransparency = 1
+	}):Play()
+	local fadeOut = TweenService:Create(frame, SlideTweenInfo, {
+		Position = frame.Position - UDim2.new(0, 0, 0, 12),
+		BackgroundTransparency = 1,
+	})
+	fadeOut.Completed:Connect(function()
+		frame:Destroy()
+	end)
+	fadeOut:Play()
+end
+
+local function createAnnouncement(message)
+	local frame = AnnoucmentTemplate:Clone()
+	frame.Position = UDim2.new(0.35, 0, 0, -SlotHeight)
+	frame.Visible = true
+	frame.Parent = Container
+
+	table.insert(Active, 1, frame)
+	reposition(true)
+
+	local gradient = frame:FindFirstChildOfClass("UIGradient")
+	if gradient then
+		tweenGradientOpen(gradient)
+	end
+
+	task.delay(DisplayTime, function()
+		dismiss(frame)
+	end)
+end
+
+AnnoucmentRemote.OnClientEvent:Connect(function(message)
+	createAnnouncement(message)
+end)</pre>
       <div class="links">
         <a href="#">clip of it in action →</a>
       </div>
