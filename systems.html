@@ -158,20 +158,130 @@ end)</pre>
     </article>
 
     <article class="entry">
-      <p class="entry-tab">// entry 02</p>
-      <h3>[System name, e.g. Hit detection]</h3>
+      <p class="entry-tab"></p>
+      <h3>[Settings menu]</h3>
       <p class="desc">[Placeholder — same structure: what it does, why you built it that way, what makes it reliable or efficient.]</p>
-      <pre><span class="c">-- example placeholder snippet, swap for your own</span>
-local function onHit(weapon, victim)
-    if victim:GetAttribute("Invincible") then
-        return
-    end
-    local damage = weapon:GetAttribute("Damage") or 10
-    victim.Humanoid:TakeDamage(damage)
+      <pre><span class="c"></span>
+local UIS = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local SoundService = game:GetService("SoundService")
+
+local Backgroundmusic = SoundService:WaitForChild("BackgroundMusic")
+
+local player = Players.LocalPlayer
+local SettingsFrame = script.Parent
+
+player:SetAttribute("TowersVFX", true)
+player:SetAttribute("Coins", true)
+player:SetAttribute("SFX", 0.18)
+player:SetAttribute("BackgroundMusic", 0.15)
+player:SetAttribute("CoinEffects", true)
+
+local function updatePlayerSettings(name, value)
+	player:SetAttribute(name, value)
+	if name == "BackgroundMusic" then
+		Backgroundmusic.Volume = value
+	end
+end
+
+local function setUpOffOn(option, frame, knob)
+	local isOn = false
+
+	local function update()
+		if isOn then
+			knob.Position = UDim2.new(0.82, 0, 0, 0)
+			frame.BackgroundColor3 = Color3.fromRGB(0, 77, 0)
+		else
+			knob.Position = UDim2.new(0, 0, 0, 0)
+			frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+		end
+		
+		updatePlayerSettings(option.Name, isOn)
+
+		option:SetAttribute("Value", isOn)
+	end
+
+	frame.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			isOn = not isOn
+			update()
+		end
+	end)
+
+	update()
+end
+
+local function setUpDragable(option, frame, knob, volumetext, back)
+	local dragging = false
+
+	local function updateFromMouse()
+		local mousePos = UIS:GetMouseLocation().X
+		local framePos = frame.AbsolutePosition.X
+		local frameSize = frame.AbsoluteSize.X
+
+		local relativeX = math.clamp(mousePos - framePos, 0, frameSize)
+		local percent = relativeX / frameSize
+		
+		back.Size = UDim2.fromScale(percent, 1)
+		knob.Position = UDim2.new(percent, -knob.AbsoluteSize.X/2, 0.5, -knob.AbsoluteSize.Y/2)
+
+		local value = math.floor(percent * 100)
+		updatePlayerSettings(option.Name, 0.5 * (value / 100))
+		volumetext.Text = value .. "%"
+		option:SetAttribute("Value", value)
+	end
+
+	knob.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = true
+		end
+	end)
+
+	UIS.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = false
+		end
+	end)
+
+	UIS.InputChanged:Connect(function(input)
+		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+			updateFromMouse()
+		end
+	end)
+
+	frame.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			updateFromMouse()
+		end
+	end)
+end
+
+for _, option in ipairs(SettingsFrame:GetChildren()) do
+	if option:GetAttribute("Settings") then
+		if option:GetAttribute("Settings") == "OffOn" then
+			local Frame = option:FindFirstChild("Frame")
+			if Frame then
+				local Knob = Frame:FindFirstChild("Knob")
+				if Knob then
+					setUpOffOn(option, Frame, Knob)
+				end
+			end
+
+		elseif option:GetAttribute("Settings") == "Draggable" then
+			local Frame = option:FindFirstChild("Frame")
+			if Frame then
+				local Knob = Frame:FindFirstChild("Knob")
+				local Back = Frame:FindFirstChild("Back")
+				local VolumeText = option:FindFirstChild("VolumeText")
+				if Knob and VolumeText and Back then
+					setUpDragable(option, Frame, Knob, VolumeText, Back)
+				end
+			end
+		end
+	end
 end</pre>
-      <div class="links">
-        <a href="#">clip of it in action →</a>
-      </div>
+		<br>
+     <iframe class="clip" src="https://www.youtube.com/embed/Ohu4_5C1ruc" frameborder="0" allowfullscreen style="aspect-ratio:16/9;"></iframe>
     </article>
 
   </div>
