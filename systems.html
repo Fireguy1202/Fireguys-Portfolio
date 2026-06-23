@@ -24,56 +24,79 @@
 
 <main class="wrap">
   <div class="page-head">
-    <p class="code-comment"><span class="dash">--</span> systems.lua</p>
+    <p class="code-comment"><span class="dash">--</span> Systems</p>
     <h1>Game systems</h1>
     <p class="lede">This is the section that actually shows how I think and code.</p>
   </div>
 
   <div class="entry-list">
+	   <article class="entry">
+      <p class="entry-tab"></p>
+      <h3>[Matchmaking system]</h3>
+      <p class="desc">A matchmaking system with party support. Players queue together and are guaranteed to land in the same arena. Automatically promotes a new leader if the current one disconnects. Built across two decoupled modules — PartyService handles party state, ArenaService manages place assignment</p>
+      <pre><span class="c"></span>
+-- PartyService: party creation & automatic leader reassignment
+function PartyService:CreateParty(player)
+	local Party = {
+		Id = player.UserId,
+		Leader = player,
+		Members = {player},
+		State = "Idle",
+		Place = nil
+	}
+	UpdateParty:FireClient(player, Party)
+	self.Parties[player.UserId] = Party
+	return Party
+end
 
-    <!-- EDIT: replace with a real system you've built. Swap the code for an actual (trimmed) snippet of yours. -->
+function PartyService:RemoveMember(player)
+	local party = self:GetParty(player)
+	if not party then return end
+	for i, member in ipairs(party.Members) do
+		if member == player then
+			table.remove(party.Members, i)
+			break
+		end
+	end
+	if party.Leader == player then
+		party.Leader = party.Members[1] -- promote next member if leader leaves
+	end
+end
+
+-- ArenaService: smart place finder, fills half-empty servers first
+function ArenaService:FindPlaceForParty()
+	local emptyPlace = nil
+	for _, place in ipairs(placesFolder:GetChildren()) do
+		local parties = place:GetAttribute("Parties") or 0
+		if parties == 1 then
+			return place -- prioritise filling existing servers
+		end
+		if parties == 0 and not emptyPlace then
+			emptyPlace = place
+		end
+	end
+	return emptyPlace
+end
+	  </pre>
+		<br>
+     <iframe class="clip" src="https://www.youtube.com/embed/Ohu4_5C1ruc" frameborder="0" allowfullscreen style="aspect-ratio:16/9;"></iframe>
+    </article>
     <article class="entry">
       <p class="entry-tab"></p>
-      <h3>[Notification System]</h3>
-      <p class="desc">[]</p>
+      <h3>Notification System</h3>
+      <p class="desc">A stacked announcement system that queues multiple notifications and reorganises them smoothly when one appears or disappears. Uses a NumberValue-driven tween to animate a UIGradient wipe-reveal since TweenService can't tween NumberSequence directly. Text fades in and out in sync with the panel animation.</p>
       <pre><span class="c"></span>
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
-
-local Remotes = ReplicatedStorage:WaitForChild("RemoteEvents")
-local AnnoucmentRemote = Remotes:WaitForChild("Annoucment")
-local Templates = ReplicatedStorage:WaitForChild("templates")
-local AnnoucmentTemplate = Templates:WaitForChild("AnnoucmentTemplate")
-
-local Container = script.Parent
-
-local SlotHeight = AnnoucmentTemplate.Size.Y.Offset + 50
-local DisplayTime = 4
-local OpenTweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
-local SlideTweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-
-local Active = {}
-
-local Eps = 0.001
-
+-- NumberValue trick: TweenService can't tween NumberSequence directly
+-- so we drive a hidden value and rebuild the gradient every change
 local function tweenGradientOpen(gradient, tweenInfo)
-	tweenInfo = tweenInfo or OpenTweenInfo
-
 	local startLeft, startRight = 0.499, 0.501
 	local progress = Instance.new("NumberValue")
 	progress.Value = 0
-	
-	TweenService:Create(gradient.Parent:FindFirstChild("TextLabel"), SlideTweenInfo, {
-		TextTransparency = 0,
-		TextStrokeTransparency = 0
-	}):Play()
-	
 
 	local function update()
 		local alpha = progress.Value
 		local leftPos = math.clamp(startLeft - (alpha * startLeft), Eps, 0.5 - Eps)
 		local rightPos = math.clamp(startRight + (alpha * (1 - startRight)), 0.5 + Eps, 1 - Eps)
-
 		gradient.Transparency = NumberSequence.new({
 			NumberSequenceKeypoint.new(0, 1),
 			NumberSequenceKeypoint.new(leftPos, 1),
@@ -83,201 +106,65 @@ local function tweenGradientOpen(gradient, tweenInfo)
 		})
 	end
 
-	update()
 	progress.Changed:Connect(update)
-
 	local tween = TweenService:Create(progress, tweenInfo, { Value = 1 })
-	tween.Completed:Connect(function()
-		progress:Destroy()
-	end)
+	tween.Completed:Connect(function() progress:Destroy() end)
 	tween:Play()
-
-	return tween
 end
 
+-- stack manager: slide everything into place when the order changes
 local function reposition(animate)
 	for index, frame in ipairs(Active) do
-		local targetY = (index - 1) * SlotHeight
-		local targetPos = UDim2.new(frame.Position.X.Scale, frame.Position.X.Offset, 0, targetY)
-
+		local targetPos = UDim2.new(frame.Position.X.Scale, frame.Position.X.Offset, 0, (index - 1) * SlotHeight)
 		if animate then
 			TweenService:Create(frame, SlideTweenInfo, { Position = targetPos }):Play()
 		else
 			frame.Position = targetPos
 		end
 	end
-end
-
-local function dismiss(frame)
-	local index = table.find(Active, frame)
-	if not index then
-		return
-	end
-	table.remove(Active, index)
-	reposition(true)
-	
-	TweenService:Create(frame:FindFirstChild("TextLabel"), SlideTweenInfo, {
-		TextTransparency = 1,
-		TextStrokeTransparency = 1
-	}):Play()
-	local fadeOut = TweenService:Create(frame, SlideTweenInfo, {
-		Position = frame.Position - UDim2.new(0, 0, 0, 12),
-		BackgroundTransparency = 1,
-	})
-	fadeOut.Completed:Connect(function()
-		frame:Destroy()
-	end)
-	fadeOut:Play()
-end
-
-local function createAnnouncement(message)
-	local frame = AnnoucmentTemplate:Clone()
-	frame.Position = UDim2.new(0.35, 0, 0, -SlotHeight)
-	frame.Visible = true
-	frame.Parent = Container
-
-	table.insert(Active, 1, frame)
-	reposition(true)
-
-	local gradient = frame:FindFirstChildOfClass("UIGradient")
-	if gradient then
-		tweenGradientOpen(gradient)
-	end
-
-	task.delay(DisplayTime, function()
-		dismiss(frame)
-	end)
-end
-
-AnnoucmentRemote.OnClientEvent:Connect(function(message)
-	createAnnouncement(message)
-end)</pre>
+end</pre>
 	<br>
   	 <iframe class="clip" src="https://www.youtube.com/embed/Eadc6iKKM6Q" frameborder="0" allowfullscreen style="aspect-ratio:16/9;"></iframe>
     </article>
 
     <article class="entry">
       <p class="entry-tab"></p>
-      <h3>[Settings menu]</h3>
-      <p class="desc">Payer changes % or enables/disables something -> For example player disables Tower vfx and it sets localy attribute TowersVfx to false which results in </p>
+      <h3>Settings menu</h3>
+      <p class="desc">A client-side settings system supporting two control types — toggles and draggable sliders. Settings are applied instantly via player attributes, which any script in the game can read without needing remote events. The system is data-driven: new settings are added just by placing a UI element with the right attribute, no code changes needed.</p>
       <pre><span class="c"></span>
-local UIS = game:GetService("UserInputService")
-local Players = game:GetService("Players")
-local SoundService = game:GetService("SoundService")
-
-local Backgroundmusic = SoundService:WaitForChild("BackgroundMusic")
-
-local player = Players.LocalPlayer
-local SettingsFrame = script.Parent
-
-player:SetAttribute("TowersVFX", true)
-player:SetAttribute("Coins", true)
-player:SetAttribute("SFX", 0.18)
-player:SetAttribute("BackgroundMusic", 0.15)
-player:SetAttribute("CoinEffects", true)
-
-local function updatePlayerSettings(name, value)
-	player:SetAttribute(name, value)
-	if name == "BackgroundMusic" then
-		Backgroundmusic.Volume = value
-	end
-end
-
+-- toggle: switches between on/off states, updates player attribute instantly
 local function setUpOffOn(option, frame, knob)
 	local isOn = false
-
 	local function update()
-		if isOn then
-			knob.Position = UDim2.new(0.82, 0, 0, 0)
-			frame.BackgroundColor3 = Color3.fromRGB(0, 77, 0)
-		else
-			knob.Position = UDim2.new(0, 0, 0, 0)
-			frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-		end
-		
-		updatePlayerSettings(option.Name, isOn)
-
-		option:SetAttribute("Value", isOn)
+		knob.Position = isOn and UDim2.new(0.82, 0, 0, 0) or UDim2.new(0, 0, 0, 0)
+		frame.BackgroundColor3 = isOn and Color3.fromRGB(0, 77, 0) or Color3.fromRGB(0, 0, 0)
+		player:SetAttribute(option.Name, isOn)
 	end
-
 	frame.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
 			isOn = not isOn
 			update()
 		end
 	end)
-
 	update()
 end
 
+-- slider: calculates value from mouse position relative to the frame
 local function setUpDragable(option, frame, knob, volumetext, back)
 	local dragging = false
-
 	local function updateFromMouse()
-		local mousePos = UIS:GetMouseLocation().X
-		local framePos = frame.AbsolutePosition.X
-		local frameSize = frame.AbsoluteSize.X
-
-		local relativeX = math.clamp(mousePos - framePos, 0, frameSize)
-		local percent = relativeX / frameSize
-		
-		back.Size = UDim2.fromScale(percent, 1)
+		local relativeX = math.clamp(UIS:GetMouseLocation().X - frame.AbsolutePosition.X, 0, frame.AbsoluteSize.X)
+		local percent = relativeX / frame.AbsoluteSize.X
 		knob.Position = UDim2.new(percent, -knob.AbsoluteSize.X/2, 0.5, -knob.AbsoluteSize.Y/2)
-
-		local value = math.floor(percent * 100)
-		updatePlayerSettings(option.Name, 0.5 * (value / 100))
-		volumetext.Text = value .. "%"
-		option:SetAttribute("Value", value)
+		back.Size = UDim2.fromScale(percent, 1)
+		volumetext.Text = math.floor(percent * 100) .. "%"
+		player:SetAttribute(option.Name, 0.5 * (percent))
 	end
-
-	knob.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			dragging = true
-		end
+	knob.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true end end)
+	UIS.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end)
+	UIS.InputChanged:Connect(function(i)
+		if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then updateFromMouse() end
 	end)
-
-	UIS.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			dragging = false
-		end
-	end)
-
-	UIS.InputChanged:Connect(function(input)
-		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-			updateFromMouse()
-		end
-	end)
-
-	frame.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			updateFromMouse()
-		end
-	end)
-end
-
-for _, option in ipairs(SettingsFrame:GetChildren()) do
-	if option:GetAttribute("Settings") then
-		if option:GetAttribute("Settings") == "OffOn" then
-			local Frame = option:FindFirstChild("Frame")
-			if Frame then
-				local Knob = Frame:FindFirstChild("Knob")
-				if Knob then
-					setUpOffOn(option, Frame, Knob)
-				end
-			end
-
-		elseif option:GetAttribute("Settings") == "Draggable" then
-			local Frame = option:FindFirstChild("Frame")
-			if Frame then
-				local Knob = Frame:FindFirstChild("Knob")
-				local Back = Frame:FindFirstChild("Back")
-				local VolumeText = option:FindFirstChild("VolumeText")
-				if Knob and VolumeText and Back then
-					setUpDragable(option, Frame, Knob, VolumeText, Back)
-				end
-			end
-		end
-	end
 end</pre>
 		<br>
      <iframe class="clip" src="https://www.youtube.com/embed/Ohu4_5C1ruc" frameborder="0" allowfullscreen style="aspect-ratio:16/9;"></iframe>
