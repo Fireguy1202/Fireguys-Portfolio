@@ -27,165 +27,151 @@
   <div class="page-head">
     <p class="code-comment"><span class="dash">--</span> Systems</p>
     <h1>Game systems</h1>
-    <p class="lede">This is the section that actually shows how I think and code.</p>
+    <p class="lede">
+      4.5+ years of Roblox scripting experience focused on scalable systems,
+      clean architecture, and performance. Below are selected systems that
+      showcase both my engineering decisions and implementation style.
+    </p>
   </div>
 
   <div class="entry-list">
-	   <article class="entry">
-      <p class="entry-tab"></p>
-      <h3>[Matchmaking system]</h3>
-      <p class="desc">A matchmaking system with party support. Players queue together and are guaranteed to land in the same arena. Automatically promotes a new leader if the current one disconnects. Built across two decoupled modules — PartyService handles party state, ArenaService manages place assignment</p>
+
+    <article class="entry">
+      <p class="entry-tab">Advanced • Backend / Networking</p>
+      <h3>[Matchmaking System]</h3>
+      <p class="desc">
+        A scalable matchmaking system with party support. Players can queue
+        together and are guaranteed to enter the same arena. Party leadership
+        is reassigned automatically if the leader disconnects. Built using
+        decoupled services to separate party state management from arena
+        allocation.
+      </p>
       <pre><span class="c"></span>
--- PartyService: party creation & automatic leader reassignment
+-- Party creation
 function PartyService:CreateParty(player)
-	local Party = {
-		Id = player.UserId,
-		Leader = player,
-		Members = {player},
-		State = "Idle",
-		Place = nil
-	}
-	UpdateParty:FireClient(player, Party)
-	self.Parties[player.UserId] = Party
-	return Party
+    local Party = {
+        Id = player.UserId,
+        Leader = player,
+        Members = {player},
+        State = "Idle"
+    }
+    self.Parties[player.UserId] = Party
+    return Party
 end
 
-function PartyService:RemoveMember(player)
-	local party = self:GetParty(player)
-	if not party then return end
-	for i, member in ipairs(party.Members) do
-		if member == player then
-			table.remove(party.Members, i)
-			break
-		end
-	end
-	if party.Leader == player then
-		party.Leader = party.Members[1] -- promote next member if leader leaves
-	end
-end
-
--- ArenaService: smart place finder, fills half-empty servers first
+-- Prioritise filling half-empty servers first
 function ArenaService:FindPlaceForParty()
-	local emptyPlace = nil
-	for _, place in ipairs(placesFolder:GetChildren()) do
-		local parties = place:GetAttribute("Parties") or 0
-		if parties == 1 then
-			return place -- prioritise filling existing servers
-		end
-		if parties == 0 and not emptyPlace then
-			emptyPlace = place
-		end
-	end
-	return emptyPlace
+    local emptyPlace = nil
+    for _, place in ipairs(placesFolder:GetChildren()) do
+        local parties = place:GetAttribute("Parties") or 0
+        if parties == 1 then
+            return place
+        end
+        if parties == 0 and not emptyPlace then
+            emptyPlace = place
+        end
+    end
+    return emptyPlace
 end
-	  </pre>
-		<br>
-     <iframe class="clip" src="https://www.youtube.com/embed/5uzqZdor5a8" frameborder="0" allowfullscreen style="aspect-ratio:16/9;"></iframe>
-		<br>
-	 <iframe class="clip" src="https://www.youtube.com/embed/JOpB8rzbQ34" frameborder="0" allowfullscreen style="aspect-ratio:16/9;"></iframe>
+      </pre>
+      <iframe class="clip" src="https://www.youtube.com/embed/5uzqZdor5a8" frameborder="0" allowfullscreen></iframe>
+      <iframe class="clip" src="https://www.youtube.com/embed/JOpB8rzbQ34" frameborder="0" allowfullscreen></iframe>
     </article>
 
-	  <div class="entry-list">
-	   <article class="entry">
-      <p class="entry-tab"></p>
-      <h3>[Building system]</h3>
-      <p class="desc">Building system with grid snapping.</p>
-      <pre><span class="c"></span>
-
-	  </pre>
-		<br>
-     <iframe class="clip" src="https://www.youtube.com/embed/5uzqZdor5a8" frameborder="0" allowfullscreen style="aspect-ratio:16/9;"></iframe>
-    </article>
-	  
     <article class="entry">
-      <p class="entry-tab"></p>
-      <h3>Notification System</h3>
-      <p class="desc">A stacked announcement system that queues multiple notifications and reorganises them smoothly when one appears or disappears. Uses a NumberValue-driven tween to animate a UIGradient wipe-reveal since TweenService can't tween NumberSequence directly. Text fades in and out in sync with the panel animation.</p>
+      <p class="entry-tab">Advanced • Client / Validation</p>
+      <h3>[Building System]</h3>
+      <p class="desc">
+        A grid-based building system with real-time ghost previews, collision
+        checks, and server-authoritative placement validation. Supports both
+        desktop and mobile input. Structures snap cleanly to configurable grid
+        tiles while occupied spaces are rejected to prevent overlap.
+      </p>
       <pre><span class="c"></span>
--- NumberValue trick: TweenService can't tween NumberSequence directly
--- so we drive a hidden value and rebuild the gradient every change
-local function tweenGradientOpen(gradient, tweenInfo)
-	local startLeft, startRight = 0.499, 0.501
-	local progress = Instance.new("NumberValue")
-	progress.Value = 0
+local snapPos = Vector3.new(
+    math.floor(rawPos.X/GRID_SIZE + 0.5) * GRID_SIZE,
+    BuildArea.Position.Y + GRID_SIZE/2,
+    math.floor(rawPos.Z/GRID_SIZE + 0.5) * GRID_SIZE
+)
 
-	local function update()
-		local alpha = progress.Value
-		local leftPos = math.clamp(startLeft - (alpha * startLeft), Eps, 0.5 - Eps)
-		local rightPos = math.clamp(startRight + (alpha * (1 - startRight)), 0.5 + Eps, 1 - Eps)
-		gradient.Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 1),
-			NumberSequenceKeypoint.new(leftPos, 1),
-			NumberSequenceKeypoint.new(0.5, 0),
-			NumberSequenceKeypoint.new(rightPos, 1),
-			NumberSequenceKeypoint.new(1, 1),
-		})
-	end
-
-	progress.Changed:Connect(update)
-	local tween = TweenService:Create(progress, tweenInfo, { Value = 1 })
-	tween.Completed:Connect(function() progress:Destroy() end)
-	tween:Play()
+local function tileFree(pos)
+    for _, defense in ipairs(Defenses:GetChildren()) do
+        if defense.PrimaryPart then
+            local p = defense.PrimaryPart.Position
+            if (Vector3.new(p.X,0,p.Z) - Vector3.new(pos.X,0,pos.Z)).Magnitude < GRID_SIZE then
+                return false
+            end
+        end
+    end
+    return true
 end
+      </pre>
+      <iframe class="clip" src="YOUR_BUILDING_VIDEO" frameborder="0" allowfullscreen></iframe>
+    </article>
 
--- stack manager: slide everything into place when the order changes
+    <article class="entry">
+      <p class="entry-tab">Intermediate • UI / Animation</p>
+      <h3>[Notification System]</h3>
+      <p class="desc">
+        A stacked notification framework that queues multiple announcements and
+        smoothly repositions active notifications when the stack changes. Uses
+        a NumberValue-driven tween to animate UIGradient transparency for wipe
+        animations that TweenService cannot perform directly.
+      </p>
+      <pre><span class="c"></span>
 local function reposition(animate)
-	for index, frame in ipairs(Active) do
-		local targetPos = UDim2.new(frame.Position.X.Scale, frame.Position.X.Offset, 0, (index - 1) * SlotHeight)
-		if animate then
-			TweenService:Create(frame, SlideTweenInfo, { Position = targetPos }):Play()
-		else
-			frame.Position = targetPos
-		end
-	end
-end</pre>
-	<br>
-  	 <iframe class="clip" src="https://www.youtube.com/embed/Eadc6iKKM6Q" frameborder="0" allowfullscreen style="aspect-ratio:16/9;"></iframe>
+    for index, frame in ipairs(Active) do
+        local targetPos = UDim2.new(
+            frame.Position.X.Scale,
+            frame.Position.X.Offset,
+            0,
+            (index - 1) * SlotHeight
+        )
+
+        if animate then
+            TweenService:Create(frame, SlideTweenInfo, {
+                Position = targetPos
+            }):Play()
+        end
+    end
+end
+      </pre>
+      <iframe class="clip" src="https://www.youtube.com/embed/Eadc6iKKM6Q" frameborder="0" allowfullscreen></iframe>
     </article>
 
     <article class="entry">
-      <p class="entry-tab"></p>
-      <h3>Settings menu</h3>
-      <p class="desc">A client-side settings system supporting two control types — toggles and draggable sliders. Settings are applied instantly via player attributes, which any script in the game can read without needing remote events. The system is data-driven: new settings are added just by placing a UI element with the right attribute, no code changes needed.</p>
+      <p class="entry-tab">Intermediate • UI / Architecture</p>
+      <h3>[Settings Framework]</h3>
+      <p class="desc">
+        A data-driven client-side settings framework supporting toggles and
+        draggable sliders. Settings are applied instantly via player attributes,
+        allowing any system to react without remote events. New settings can be
+        added through UI attributes alone without changing code.
+      </p>
       <pre><span class="c"></span>
--- toggle: switches between on/off states, updates player attribute instantly
 local function setUpOffOn(option, frame, knob)
-	local isOn = false
-	local function update()
-		knob.Position = isOn and UDim2.new(0.82, 0, 0, 0) or UDim2.new(0, 0, 0, 0)
-		frame.BackgroundColor3 = isOn and Color3.fromRGB(0, 77, 0) or Color3.fromRGB(0, 0, 0)
-		player:SetAttribute(option.Name, isOn)
-	end
-	frame.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			isOn = not isOn
-			update()
-		end
-	end)
-	update()
-end
+    local isOn = false
 
--- slider: calculates value from mouse position relative to the frame
-local function setUpDragable(option, frame, knob, volumetext, back)
-	local dragging = false
-	local function updateFromMouse()
-		local relativeX = math.clamp(UIS:GetMouseLocation().X - frame.AbsolutePosition.X, 0, frame.AbsoluteSize.X)
-		local percent = relativeX / frame.AbsoluteSize.X
-		knob.Position = UDim2.new(percent, -knob.AbsoluteSize.X/2, 0.5, -knob.AbsoluteSize.Y/2)
-		back.Size = UDim2.fromScale(percent, 1)
-		volumetext.Text = math.floor(percent * 100) .. "%"
-		player:SetAttribute(option.Name, 0.5 * (percent))
-	end
-	knob.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true end end)
-	UIS.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end)
-	UIS.InputChanged:Connect(function(i)
-		if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then updateFromMouse() end
-	end)
-end</pre>
-		<br>
-     <iframe class="clip" src="https://www.youtube.com/embed/Ohu4_5C1ruc" frameborder="0" allowfullscreen style="aspect-ratio:16/9;"></iframe>
+    local function update()
+        knob.Position = isOn
+            and UDim2.new(0.82,0,0,0)
+            or UDim2.new(0,0,0,0)
+
+        player:SetAttribute(option.Name, isOn)
+    end
+end
+      </pre>
+      <iframe class="clip" src="https://www.youtube.com/embed/Ohu4_5C1ruc" frameborder="0" allowfullscreen></iframe>
     </article>
 
+  </div>
+
+  <div class="quote-entry">
+    <p class="quote">
+      I focus on building modular, scalable systems that remain maintainable,
+      performant, and easy to extend in production-scale Roblox games.
+    </p>
+    <p class="attribution">— Fireguy1202</p>
   </div>
 </main>
 
