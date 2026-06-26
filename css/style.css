@@ -198,9 +198,6 @@ img { max-width: 100%; display: block; }
 }
 .section-label .dash { color: var(--accent); }
 
-/* ===================================================================
-   Card grid (homepage)
-   =================================================================== */
 .card-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -263,9 +260,6 @@ img { max-width: 100%; display: block; }
   color: var(--accent-ink);
 }
 
-/* ===================================================================
-   Sub-page layout (games / systems / reviews)
-   =================================================================== */
 .page-head {
   padding: 48px 0 8px;
 }
@@ -366,9 +360,6 @@ img { max-width: 100%; display: block; }
   color: var(--ink-muted);
 }
 
-/* ===================================================================
-   Footer
-   =================================================================== */
 .site-footer {
   margin-top: 64px;
   padding: 24px 0 48px;
